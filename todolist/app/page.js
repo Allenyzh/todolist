@@ -1,78 +1,253 @@
-'use client'
+"use client";
 
-// import { nunito } from "./ui/fonts";
+import { nunito } from "./ui/fonts";
+import { useState, useEffect, useRef } from "react";
 
-// export default function Page() {
-//   return (
-//     <div className={`${nunito.className}`}>
-//       <h1
-//         className="flex items-center justify-center h-32 text-xl text-gray-1000 font-black md:text-3xl md:leading-normal cursor-default"
-//       >
-//         To-do List
-//       </h1>
+export default function Page() {
+  const [tasks, setTasks] = useState([]);
+  const [newTask, setNewTask] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [editText, setEditText] = useState("");
+  const [editErrorMsg, setEditErrorMsg] = useState("");
+  const editInputRef = useRef(null);
 
-//       <div className="flex items-center justify-center h-16">
-//         <button className="rounded-md flex items-center justify-center w-64 h-10 bg-sky-500 hover:bg-sky-700 text-slate-100 font-black">
-//           Add New list
-//         </button>
-//       </div>
-//     </div>
-//   );
-// }
-// components/TodoList.js
-import { useState } from 'react'
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (
+        editInputRef.current &&
+        !editInputRef.current.contains(event.target)
+      ) {
+        if (editId !== null) {
+          editTask(editId);
+        }
+      }
+    };
 
-export default function TodoList() {
-  const [tasks, setTasks] = useState([
-    { id: 1, text: 'HackerRank Problem solving part 2', completed: true },
-    { id: 2, text: 'Join the progress review meeting at 9pm-10', completed: false },
-    { id: 3, text: 'Write an article about the "Create Todo App Using Next JS"', completed: true },
-    { id: 4, text: 'Create the Monthly presentation 2', completed: false },
-  ])
-  const [newTask, setNewTask] = useState('')
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [editId, editText]);
 
-  const addTask = () => {
+  const clearErrorMessages = () => {
+    setErrorMsg("");
+    setEditErrorMsg("");
+  };
+
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const response = await fetch(
+          "http://100.89.152.5:8080/api/todos?completed="
+        );
+        const data = await response.json();
+        setTasks(data);
+      } catch (error) {
+        console.error("Error fetching tasks:", error);
+      }
+    };
+
+    fetchTasks();
+  }, []);
+
+  const addTask = async () => {
+    clearErrorMessages();
     if (newTask.trim()) {
-      setTasks([...tasks, { id: Date.now(), text: newTask, completed: false }])
-      setNewTask('')
+      try {
+        const response = await fetch("http://100.89.152.5:8080/api/todos", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ name: newTask, completed: false }),
+        });
+
+        if (response.ok) {
+          const newTaskFromAPI = await response.json();
+          setTasks([...tasks, newTaskFromAPI]);
+          setNewTask("");
+          setErrorMsg("");
+        } else {
+          const errorData = await response.json();
+          setErrorMsg(errorData.msg);
+        }
+      } catch (error) {
+        console.error("Error adding task:", error);
+        setErrorMsg("An unexpected error occurred");
+      }
+    } else {
+      setErrorMsg("Opps! you forgot to add the content!");
     }
-  }
+  };
 
-  const toggleTask = (id) => {
-    setTasks(tasks.map(task => task.id === id ? { ...task, completed: !task.completed } : task))
-  }
+  const toggleTask = async (id) => {
+    clearErrorMessages();
+    const taskToToggle = tasks.find((task) => task.id === id);
+    if (taskToToggle) {
+      try {
+        const response = await fetch(
+          `http://100.89.152.5:8080/api/todos/${id}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ...taskToToggle,
+              completed: !taskToToggle.completed,
+            }),
+          }
+        );
+        const updatedTask = await response.json();
+        setTasks(tasks.map((task) => (task.id === id ? updatedTask : task)));
+      } catch (error) {
+        console.error("Error toggling task:", error);
+      }
+    }
+  };
 
-  const removeTask = (id) => {
-    setTasks(tasks.filter(task => task.id !== id))
-  }
+  const removeTask = async (id) => {
+    clearErrorMessages();
+    try {
+      const response = await fetch(`http://100.89.152.5:8080/api/todos/${id}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        setTasks(tasks.filter((task) => task.id !== id));
+      } else {
+        setErrorMsg("Something went wrong! please try again!");
+      }
+    } catch (error) {
+      console.error("Error deleting task:", error);
+    }
+  };
+
+  const editTask = async (id) => {
+    clearErrorMessages();
+    if (editId === id) {
+      if (!editText.trim()) {
+        setEditErrorMsg("Content cannot be empty");
+        return;
+      }
+
+      const taskToEdit = tasks.find((task) => task.id === id);
+      if (taskToEdit) {
+        try {
+          const response = await fetch(
+            `http://100.89.152.5:8080/api/todos/${id}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ ...taskToEdit, name: editText }),
+            }
+          );
+          if (response.ok) {
+            const updatedTask = await response.json();
+            setTasks(
+              tasks.map((task) => (task.id === id ? updatedTask : task))
+            );
+            setEditId(null); // Exit edit mode
+            setEditErrorMsg(""); // Clear error message
+          } else {
+            const errorData = await response.json();
+            setEditErrorMsg(errorData.msg);
+          }
+        } catch (error) {
+          console.error("Error editing task:", error);
+          setEditErrorMsg("An unexpected error occurred");
+        }
+      }
+    } else {
+      setEditId(id);
+      setEditText(tasks.find((task) => task.id === id).name);
+      setEditErrorMsg(""); // Clear error message when entering edit mode
+    }
+  };
+
+  const handleKeyDown = (event, id) => {
+    if (event.key === "Enter") {
+      editTask(id);
+    }
+  };
 
   return (
-    <div className="max-w-md mx-auto bg-white shadow-lg rounded-lg overflow-hidden">
-      <div className="bg-purple-500 text-white p-4 text-xl">ToDo List</div>
-      <div className="p-4">
-        <div className="flex mb-4">
+    <div className={`${nunito.className}`}>
+      <h1 className="flex items-center justify-center h-32 text-xl text-gray-1000 font-black md:text-3xl md:leading-normal cursor-default">
+        To-do List
+      </h1>
+
+      <div className="mx-auto px-4 h-16 sm:flex-col md:flex ">
+        <div>
           <input
             type="text"
-            className="flex-1 p-2 border border-gray-300 rounded mr-2"
+            className="flex-1 p-2 w-64 border border-gray-300 rounded mr-2"
             value={newTask}
             onChange={(e) => setNewTask(e.target.value)}
             placeholder="Add new task"
           />
-          <button onClick={addTask} className="bg-purple-500 text-white p-2 rounded">Add</button>
         </div>
-        <ul>
-          {tasks.map(task => (
-            <li key={task.id} className="flex justify-between items-center mb-2">
-              <div onClick={() => toggleTask(task.id)} className="flex-1 cursor-pointer">
-                <input type="checkbox" checked={task.completed} onChange={() => {}} className="mr-2" />
-                <span className={task.completed ? 'line-through' : ''}>{task.text}</span>
+        <div>
+          <button
+            onClick={addTask}
+            className="rounded-md w-64 h-10 bg-sky-500 hover:bg-sky-700 text-slate-100 font-black"
+          >
+            Add New list
+          </button>
+        </div>
+      </div>
+      {errorMsg && (
+        <div className="mt-2 text-red-500 text-sm max-w-md">{errorMsg}</div>
+      )}
+
+      <div className="max-w-md mx-auto bg-white shadow-lg rounded-lg overflow-hidden mt-8">
+        <ul className="p-4">
+          {tasks.map((task) => (
+            <li
+              key={task.id}
+              className="flex justify-between items-center mb-2 border-b pb-2"
+            >
+              <div className="flex-1">
+                <input
+                  type="checkbox"
+                  checked={task.completed}
+                  className="mr-2"
+                  onChange={() => toggleTask(task.id)}
+                />
+                {editId === task.id ? (
+                  <input
+                    ref={editInputRef}
+                    type="text"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    onKeyDown={(e) => handleKeyDown(e, task.id)}
+                    className="border border-gray-300 rounded p-1"
+                  />
+                ) : (
+                  <span className={task.completed ? "line-through" : ""}>
+                    No.{task.id}--{task.name}
+                  </span>
+                )}
               </div>
-              <button onClick={() => removeTask(task.id)} className="text-red-500">Delete</button>
+              <div className="grid grid-cols-2 g-5">
+                <button onClick={() => editTask(task.id)}>
+                  <img src="/editing.png" alt="Edit" className="w-5 h-5" />
+                </button>
+                <button onClick={() => removeTask(task.id)}>
+                  <img src="/trash.png" alt="Delete" className="w-6 h-6" />
+                </button>
+              </div>
             </li>
           ))}
         </ul>
+        {editErrorMsg && (
+          <div className="mt-2 text-red-500 text-sm max-w-md mx-auto">
+            {editErrorMsg}
+          </div>
+        )}
       </div>
     </div>
-  )
+  );
 }
-

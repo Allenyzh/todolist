@@ -10,7 +10,10 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html
+      lang="en"
+      className="overflow-hidden flex items-center justify-center min-h-screen bg-gray-100"
+    >
       <body className={inter.className}>{children}</body>
     </html>
   );
